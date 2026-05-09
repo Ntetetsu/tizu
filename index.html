@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>地図記号ディフェンダー 国土地理院画像参照版</title>
+
+<style>
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  font-family:"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+  background:#111827;
+  height:100vh;
+  width:100vw;
+  overflow:hidden;
+  user-select:none;
+  touch-action:none;
+}
+
+#app{
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+#field-wrap{
+  position:relative;
+  flex:1;
+  overflow:hidden;
+}
+
+#game-canvas{
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+#overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,.75);
+  backdrop-filter:blur(4px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:50;
+  overflow:auto;
+  padding:14px;
+}
+
+.panel{
+  width:100%;
+  max-width:390px;
+  color:white;
+  text-align:center;
+}
+
+h1{
+  font-size:27px;
+  margin:0 0 8px;
+  line-height:1.15;
+}
+
+.sub{
+  font-size:14px;
+  opacity:.9;
+  margin-bottom:12px;
+}
+
+.box{
+  background:rgba(255,255,255,.12);
+  padding:12px;
+  border-radius:16px;
+  margin-bottom:12px;
+  box-shadow:0 8px 25px rgba(0,0,0,.25);
+}
+
+.cat-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+}
+
+.cat-btn,
+.level-btn,
+.back-btn{
+  border:0;
+  border-radius:10px;
+  padding:10px 6px;
+  font-weight:800;
+  cursor:pointer;
+  color:white;
+  box-shadow:0 4px 0 rgba(0,0,0,.25);
+}
+
+.cat-btn{
+  background:#4b5563;
+  font-size:13px;
+}
+
+.cat-btn.selected{
+  background:#f59e0b;
+  color:#1f2937;
+}
+
+.levels{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.level-btn{
+  font-size:16px;
+}
+
+.lv1{background:#22c55e;}
+.lv2{background:#3b82f6;}
+.lv3{background:#eab308;}
+.lv4{background:#f97316;}
+.lv5{background:#ef4444;}
+
+.level-btn:active,
+.cat-btn:active,
+.back-btn:active,
+.unit-btn:active{
+  transform:translateY(3px);
+  box-shadow:none;
+}
+
+#result-menu{
+  display:none;
+}
+
+#result-title{
+  font-size:34px;
+  font-weight:900;
+  margin-bottom:6px;
+}
+
+#result-desc{
+  font-size:18px;
+  margin-bottom:14px;
+}
+
+.result-box{
+  background:rgba(255,255,255,.18);
+  border-radius:16px;
+  padding:14px;
+  margin-bottom:14px;
+}
+
+.result-box p{
+  margin:6px 0;
+  font-weight:800;
+}
+
+.back-btn{
+  width:100%;
+  background:#3b82f6;
+  font-size:20px;
+  padding:12px;
+}
+
+#level-label{
+  position:absolute;
+  top:10px;
+  left:10px;
+  background:rgba(0,0,0,.55);
+  color:white;
+  padding:6px 12px;
+  border-radius:999px;
+  font-weight:800;
+  z-index:20;
+}
+
+#source-label{
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:rgba(0,0,0,.45);
+  color:white;
+  padding:5px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:800;
+  z-index:20;
+}
+
+#banner{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  background:#dc2626;
+  color:white;
+  padding:14px 22px;
+  border-radius:16px;
+  font-size:22px;
+  font-weight:900;
+  box-shadow:0 8px 25px rgba(0,0,0,.35);
+  display:none;
+  z-index:40;
+  white-space:nowrap;
+}
+
+/* クイズパネル */
+#quiz-panel{
+  height:310px;
+  background:#f3f4f6;
+  border-top:4px solid #1f2937;
+  display:flex;
+  flex-direction:column;
+  flex-shrink:0;
+}
+
+#quiz-area{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:8px;
+}
+
+.prompt{
+  font-weight:900;
+  color:#374151;
+  margin-bottom:6px;
+  font-size:17px;
+}
+
+/* 
+  ★修正版
+  国土地理院画像の下部にある答え文字を見せないため、
+  問題カードを横長にし、下側を overflow:hidden でトリミングする。
+*/
+#symbol-card{
+  width:210px;
+  height:78px;
+  background:white;
+  border:4px solid #111827;
+  border-radius:16px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  box-shadow:inset 0 0 0 3px #e5e7eb,0 4px 0 rgba(0,0,0,.18);
+  margin-bottom:8px;
+  overflow:hidden;
+  position:relative;
+}
+
+/*
+  画像を大きめに表示して、下部の答え文字をカード外に押し出す。
+  cropY と cropScale は各問題ごとに調整可能。
+*/
+#symbol-card img{
+  width:90px;
+  height:auto;
+  max-width:none;
+  object-fit:contain;
+  object-position:center top;
+  transform:
+    translateY(var(--crop-y, -10px))
+    scale(var(--crop-scale, 1.3));
+  transform-origin:center top;
+  pointer-events:none;
+  user-select:none;
+}
+
+#answers{
+  width:100%;
+  max-width:440px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  padding:0 6px;
+}
+
+.answer-btn{
+  min-height:58px;
+  border:4px solid #60a5fa;
+  background:white;
+  border-radius:14px;
+  font-size:15px;
+  line-height:1.15;
+  font-weight:900;
+  color:#111827;
+  cursor:pointer;
+  box-shadow:0 4px 0 rgba(0,0,0,.18);
+}
+
+.answer-btn:active{
+  background:#dbeafe;
+  transform:translateY(3px);
+  box-shadow:none;
+}
+
+.flash-correct{
+  animation:green .3s;
+}
+
+.flash-wrong{
+  animation:red .3s;
+}
+
+@keyframes green{
+  0%{background:rgba(16,185,129,.45);}
+  100%{background:#f3f4f6;}
+}
+
+@keyframes red{
+  0%{background:rgba(239,68,68,.45);}
+  100%{background:#f3f4f6;}
+}
+
+.frozen{
+  opacity:.5;
+  pointer-events:none;
+  filter:grayscale(100%);
+}
+
+#energy-line{
+  background:#1f2937;
+  padding:8px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.energy-label{
+  color:#facc15;
+  font-size:14px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.energy-outer{
+  position:relative;
+  flex:1;
+  height:24px;
+  background:#111827;
+  border:2px solid #4b5563;
+  border-radius:999px;
+  overflow:hidden;
+}
+
+#energy-bar{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#facc15,#fde68a);
+  transition:.2s;
+}
+
+#energy-text{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:white;
+  font-size:12px;
+  font-weight:900;
+}
+
+#units{
+  background:#d1d5db;
+  padding:10px;
+  display:flex;
+  gap:8px;
+  justify-content:center;
+}
+
+.unit-btn{
+  flex:1;
+  max-width:126px;
+  background:white;
+  border:0;
+  border-bottom:4px solid #9ca3af;
+  border-radius:14px;
+  padding:8px 4px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.unit-btn:disabled{
+  opacity:.55;
+  filter:grayscale(100%);
+}
+
+.unit-icon{
+  font-size:30px;
+}
+
+.unit-name{
+  font-size:12px;
+  background:#e5e7eb;
+  border-radius:999px;
+  padding:2px 6px;
+  margin:3px auto;
+  display:inline-block;
+}
+
+.unit-cost{
+  color:#2563eb;
+  font-size:14px;
+}
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <div id="field-wrap">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="overlay">
+      <div id="start-menu" class="panel">
+        <h1>地図記号ディフェンダー<br>国土地理院画像参照版</h1>
+        <div class="sub">地図記号を見て、正しい名前を選ぼう！</div>
+
+        <div class="box">
+          <div style="font-weight:900;margin-bottom:8px;">🗺️ 出題レベル</div>
+          <div class="cat-grid">
+            <button class="cat-btn selected" onclick="selectCategory('all',this)">全部</button>
+            <button class="cat-btn" onclick="selectCategory('freq1',this)">よく出る</button>
+            <button class="cat-btn" onclick="selectCategory('freq2',this)">基本</button>
+            <button class="cat-btn" onclick="selectCategory('freq3',this)">応用</button>
+            <button class="cat-btn" onclick="selectCategory('freq4',this)">発展</button>
+            <button class="cat-btn" onclick="selectCategory('freq5',this)">マニア</button>
+          </div>
+        </div>
+
+        <div class="box levels">
+          <button class="level-btn lv1" onclick="startGame(1)">レベル 1（よく出る記号）</button>
+          <button class="level-btn lv2" onclick="startGame(2)">レベル 2（基本の記号）</button>
+          <button class="level-btn lv3" onclick="startGame(3)">レベル 3（応用の記号）</button>
+          <button class="level-btn lv4" onclick="startGame(4)">レベル 4（発展の記号）</button>
+          <button class="level-btn lv5" onclick="startGame(5)">レベル 5（マニア記号）</button>
+        </div>
+      </div>
+
+      <div id="result-menu" class="panel">
+        <div id="result-title">クリア！</div>
+        <div id="result-desc">地図を守りきった！</div>
+
+        <div class="result-box">
+          <p>📊 今回の結果</p>
+          <p id="log-correct">✅ 正解：0問</p>
+          <p id="log-wrong">❌ 不正解：0問</p>
+          <p id="log-accuracy">🎯 正答率：0%</p>
+        </div>
+
+        <button class="back-btn" onclick="resetToMenu()">タイトルに戻る</button>
+      </div>
+    </div>
+
+    <div id="level-label">メニュー</div>
+    <div id="source-label">画像：国土地理院</div>
+    <div id="banner"></div>
+  </div>
+
+  <div id="quiz-panel">
+    <div id="quiz-area">
+      <div class="prompt">この地図記号は？</div>
+      <div id="symbol-card"></div>
+
+      <div id="answers">
+        <button class="answer-btn" id="ans0" onclick="checkAnswer(0)">-</button>
+        <button class="answer-btn" id="ans1" onclick="checkAnswer(1)">-</button>
+        <button class="answer-btn" id="ans2" onclick="checkAnswer(2)">-</button>
+      </div>
+    </div>
+
+    <div id="energy-line">
+      <div class="energy-label">⚡ エネルギー</div>
+      <div class="energy-outer">
+        <div id="energy-bar"></div>
+        <div id="energy-text">0 / 60</div>
+      </div>
+    </div>
+
+    <div id="units">
+      <button class="unit-btn" id="unit1" onclick="spawnAlly('bike')">
+        <div class="unit-icon">🚲</div>
+        <div class="unit-name">自転車隊</div>
+        <div class="unit-cost">⚡ 3</div>
+      </button>
+
+      <button class="unit-btn" id="unit2" onclick="spawnAlly('fire')">
+        <div class="unit-icon">🚒</div>
+        <div class="unit-name">消防隊</div>
+        <div class="unit-cost">⚡ 10</div>
+      </button>
+
+      <button class="unit-btn" id="unit3" onclick="spawnAlly('sat')">
+        <div class="unit-icon">🛰️</div>
+        <div class="unit-name">衛星隊</div>
+        <div class="unit-cost">⚡ 30</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById("game-canvas");
+const ctx=canvas.getContext("2d");
+
+let W=0;
+let H=0;
+
+function resize(){
+  W=canvas.clientWidth;
+  H=canvas.clientHeight;
+  canvas.width=W;
+  canvas.height=H;
+}
+
+window.addEventListener("resize",resize);
+resize();
+
+let gameState="MENU";
+let animationId=null;
+let lastTime=0;
+let timeElapsed=0;
+let currentLevel=1;
+let selectedCategory="all";
+let energy=0;
+let maxEnergy=60;
+let correctCount=0;
+let wrongCount=0;
+let frozen=false;
+let freezeTimer=null;
+let bannerTimer=null;
+let currentQuestion=null;
+let correctIndex=0;
+let enemySpawnTimer=0;
+let entities=[];
+let particles=[];
+let damageTexts=[];
+
+const bases={
+  player:{
+    x:0,
+    y:0,
+    hp:1000,
+    maxHp:1000,
+    width:80,
+    height:100
+  },
+  enemy:{
+    x:0,
+    y:0,
+    hp:500,
+    maxHp:500,
+    width:80,
+    height:100
+  }
+};
+
+const allyTypes={
+  bike:{
+    emoji:"🚲",
+    cost:3,
+    hp:60,
+    maxHp:60,
+    atk:8,
+    speed:60,
+    range:40,
+    cd:.8,
+    size:30
+  },
+  fire:{
+    emoji:"🚒",
+    cost:10,
+    hp:260,
+    maxHp:260,
+    atk:25,
+    speed:40,
+    range:50,
+    cd:1.5,
+    size:50
+  },
+  sat:{
+    emoji:"🛰️",
+    cost:30,
+    hp:620,
+    maxHp:620,
+    atk:80,
+    speed:25,
+    range:70,
+    cd:2,
+    size:70
+  }
+};
+
+const enemyTypes=[
+  {
+    emoji:"🪨",
+    hp:35,
+    maxHp:35,
+    atk:5,
+    speed:30,
+    range:35,
+    cd:1.2,
+    size:30
+  },
+  {
+    emoji:"🌪️",
+    hp:130,
+    maxHp:130,
+    atk:16,
+    speed:25,
+    range:40,
+    cd:1.5,
+    size:45
+  },
+  {
+    emoji:"🗿",
+    hp:370,
+    maxHp:370,
+    atk:42,
+    speed:20,
+    range:60,
+    cd:2,
+    size:60
+  }
+];
+
+/*
+  地図記号データ
+  cropY: 画像の上下位置。よりマイナスにすると上へ移動し、下の文字が隠れやすい。
+  cropScale: 画像倍率。大きくすると記号が大きくなり、下の文字がカード外へ出やすい。
+*/
+const questions=[
+  {
+    name:"郵便局",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241189.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"小・中学校",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241191.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"病院",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241193.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"交番",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241187.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"消防署",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241183.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"神社",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241197.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"寺院",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241198.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"田",
+    band:"freq1",
+    level:1,
+    img:"https://www.gsi.go.jp/common/000241287.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"博物館",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241194.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"図書館",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241195.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"温泉",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241322.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"町村役場",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241180.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"警察署",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241186.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"税務署",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241182.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"果樹園",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241291.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"茶畑",
+    band:"freq2",
+    level:2,
+    img:"https://www.gsi.go.jp/common/000241290.png",
+    cropY:-14,
+    cropScale:1.42
+  },
+  {
+    name:"保健所",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241185.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"官公署",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241181.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"裁判所",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241205.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"発電所等・送電線",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241280.png",
+    cropY:-10,
+    cropScale:1.25
+  },
+  {
+    name:"高塔",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241264.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"竹林",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000241294.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"三角点",
+    band:"freq3",
+    level:3,
+    img:"https://www.gsi.go.jp/common/000240973.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"水準点",
+    band:"freq4",
+    level:4,
+    img:"https://www.gsi.go.jp/common/000240974.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"電子基準点",
+    band:"freq4",
+    level:4,
+    img:"https://www.gsi.go.jp/common/000241003.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"城跡",
+    band:"freq4",
+    level:4,
+    img:"https://www.gsi.go.jp/common/000241325.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"自然災害伝承碑",
+    band:"freq4",
+    level:4,
+    img:"https://web1.gsi.go.jp/common/000241243.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"道路橋",
+    band:"freq5",
+    level:5,
+    img:"https://www.gsi.go.jp/common/000241059.png",
+    cropY:-10,
+    cropScale:1.25
+  },
+  {
+    name:"せき",
+    band:"freq5",
+    level:5,
+    img:"https://www.gsi.go.jp/common/000241276.png",
+    cropY:-10,
+    cropScale:1.3
+  },
+  {
+    name:"都道府県道",
+    band:"freq5",
+    level:5,
+    img:"https://www.gsi.go.jp/common/000241075.png",
+    cropY:-10,
+    cropScale:1.25
+  },
+  {
+    name:"徒歩道",
+    band:"freq5",
+    level:5,
+    img:"https://www.gsi.go.jp/common/000241074.png",
+    cropY:-10,
+    cropScale:1.25
+  },
+  {
+    name:"無壁舎",
+    band:"freq5",
+    level:5,
+    img:"https://www.gsi.go.jp/common/000245926.png",
+    cropY:-10,
+    cropScale:1.3
+  }
+];
+
+function selectCategory(cat,btn){
+  selectedCategory=cat;
+  document.querySelectorAll(".cat-btn").forEach(b=>b.classList.remove("selected"));
+  btn.classList.add("selected");
+}
+
+function startGame(level){
+  currentLevel=level;
+  gameState="PLAYING";
+  timeElapsed=0;
+  energy=0;
+  correctCount=0;
+  wrongCount=0;
+  frozen=false;
+  entities=[];
+  particles=[];
+  damageTexts=[];
+  enemySpawnTimer=2;
+
+  maxEnergy=[60,80,100,120,150][level-1];
+
+  bases.enemy.maxHp=[420,800,1500,2100,3100][level-1];
+  bases.enemy.hp=bases.enemy.maxHp;
+
+  bases.player.maxHp=1000;
+  bases.player.hp=1000;
+
+  document.getElementById("overlay").style.display="none";
+  document.getElementById("start-menu").style.display="block";
+  document.getElementById("result-menu").style.display="none";
+  document.getElementById("level-label").textContent="レベル "+level;
+  document.getElementById("answers").classList.remove("frozen");
+
+  hideBanner();
+  updateUI();
+  generateQuestion();
+
+  if(!animationId){
+    lastTime=performance.now();
+    animationId=requestAnimationFrame(loop);
+  }
+}
+
+function resetToMenu(){
+  gameState="MENU";
+  document.getElementById("overlay").style.display="flex";
+  document.getElementById("start-menu").style.display="block";
+  document.getElementById("result-menu").style.display="none";
+  document.getElementById("level-label").textContent="メニュー";
+  ctx.clearRect(0,0,W,H);
+}
+
+function endGame(win){
+  if(gameState==="CLEAR" || gameState==="GAMEOVER") return;
+
+  gameState=win ? "CLEAR" : "GAMEOVER";
+
+  document.getElementById("overlay").style.display="flex";
+  document.getElementById("start-menu").style.display="none";
+  document.getElementById("result-menu").style.display="block";
+
+  document.getElementById("result-title").textContent=win ? "🎉 クリア！ 🎉" : "💀 ゲームオーバー 💀";
+  document.getElementById("result-title").style.color=win ? "#facc15" : "#f87171";
+  document.getElementById("result-desc").textContent=win
+    ? "レベル "+currentLevel+" の地図を守りきった！"
+    : "自分の拠点が破壊されてしまった…";
+
+  const total=correctCount+wrongCount;
+  const rate=total ? Math.round(correctCount/total*100) : 0;
+
+  document.getElementById("log-correct").textContent="✅ 正解："+correctCount+"問";
+  document.getElementById("log-wrong").textContent="❌ 不正解："+wrongCount+"問";
+  document.getElementById("log-accuracy").textContent="🎯 正答率："+rate+"%";
+}
+
+function getPool(){
+  let p=questions.filter(q=>q.level<=currentLevel);
+
+  if(selectedCategory!=="all"){
+    const filtered=p.filter(q=>q.band===selectedCategory);
+    if(filtered.length>=3){
+      p=filtered;
+    }
+  }
+
+  return p;
+}
+
+function generateQuestion(){
+  const p=getPool();
+
+  if(!p.length){
+    currentQuestion=questions[0];
+  }else{
+    currentQuestion=p[Math.floor(Math.random()*p.length)];
+  }
+
+  const card=document.getElementById("symbol-card");
+
+  const cropY=currentQuestion.cropY ?? -10;
+  const cropScale=currentQuestion.cropScale ?? 1.3;
+
+  card.innerHTML =
+    '<img src="'+currentQuestion.img+'" '+
+    'alt="'+currentQuestion.name+'" '+
+    'style="--crop-y:'+cropY+'px; --crop-scale:'+cropScale+';" '+
+    'onerror="this.alt=\'画像を読み込めません\'; this.style.display=\'none\';">';
+
+  let answers=[currentQuestion.name];
+
+  const names=questions
+    .map(q=>q.name)
+    .filter(n=>n!==currentQuestion.name);
+
+  while(answers.length<3){
+    const n=names[Math.floor(Math.random()*names.length)];
+    if(!answers.includes(n)){
+      answers.push(n);
+    }
+  }
+
+  answers.sort(()=>Math.random()-.5);
+  correctIndex=answers.indexOf(currentQuestion.name);
+
+  for(let i=0;i<3;i++){
+    document.getElementById("ans"+i).textContent=answers[i];
+  }
+}
+
+function checkAnswer(i){
+  if(gameState!=="PLAYING" || frozen) return;
+
+  const area=document.getElementById("quiz-area");
+  area.classList.remove("flash-correct","flash-wrong");
+  void area.offsetWidth;
+
+  if(i===correctIndex){
+    correctCount++;
+    area.classList.add("flash-correct");
+    addEnergy(Math.max(3,currentLevel*4));
+    createParticles(W/2,H/2,"#10b981",16);
+    generateQuestion();
+  }else{
+    wrongCount++;
+    area.classList.add("flash-wrong");
+    showBanner("❌ 正解は「"+currentQuestion.name+"」だよ！");
+
+    frozen=true;
+    document.getElementById("answers").classList.add("frozen");
+
+    clearTimeout(freezeTimer);
+    freezeTimer=setTimeout(()=>{
+      frozen=false;
+      document.getElementById("answers").classList.remove("frozen");
+      hideBanner();
+      generateQuestion();
+    },2000);
+  }
+}
+
+function showBanner(text){
+  const b=document.getElementById("banner");
+  b.textContent=text;
+  b.style.display="block";
+
+  clearTimeout(bannerTimer);
+  bannerTimer=setTimeout(hideBanner,1800);
+}
+
+function hideBanner(){
+  document.getElementById("banner").style.display="none";
+}
+
+function addEnergy(v){
+  energy=Math.min(maxEnergy,energy+v);
+  updateUI();
+}
+
+function updateUI(){
+  const pct=energy/maxEnergy*100;
+
+  document.getElementById("energy-bar").style.width=pct+"%";
+  document.getElementById("energy-text").textContent=Math.floor(energy)+" / "+maxEnergy;
+
+  document.getElementById("unit1").disabled=energy<allyTypes.bike.cost;
+  document.getElementById("unit2").disabled=energy<allyTypes.fire.cost;
+  document.getElementById("unit3").disabled=energy<allyTypes.sat.cost;
+}
+
+function spawnAlly(typeKey){
+  if(gameState!=="PLAYING") return;
+
+  const t=allyTypes[typeKey];
+
+  if(energy<t.cost) return;
+
+  energy-=t.cost;
+  updateUI();
+
+  const gy=H*.62+(Math.random()*30-15);
+
+  entities.push({
+    isAlly:true,
+    emoji:t.emoji,
+    x:bases.player.x-t.size/2-10,
+    y:gy,
+    hp:t.hp,
+    maxHp:t.maxHp,
+    atk:t.atk,
+    speed:-t.speed,
+    range:t.range,
+    maxCd:t.cd,
+    cdTimer:0,
+    size:t.size,
+    state:"WALK",
+    target:null
+  });
+
+  createParticles(bases.player.x-40,gy,"#3b82f6",10);
+}
+
+function spawnEnemy(dt){
+  enemySpawnTimer-=dt;
+
+  if(enemySpawnTimer>0) return;
+
+  let rate=[4.5,3.5,2.5,2.0,1.45][currentLevel-1];
+  rate=Math.max(.75,rate-Math.floor(timeElapsed/15)*.1);
+  enemySpawnTimer=rate+Math.random()*.4;
+
+  let id=0;
+  const r=Math.random();
+
+  if(currentLevel===2 && r>.7) id=1;
+
+  if(currentLevel===3){
+    if(r>.5) id=1;
+    if(r>.9) id=2;
+  }
+
+  if(currentLevel===4){
+    if(r>.4) id=1;
+    if(r>.8) id=2;
+  }
+
+  if(currentLevel===5){
+    if(r>.3) id=1;
+    if(r>.6) id=2;
+  }
+
+  const t=enemyTypes[id];
+  const m=1+(currentLevel-1)*.1;
+  const gy=H*.62+(Math.random()*30-15);
+
+  entities.push({
+    isAlly:false,
+    emoji:t.emoji,
+    x:bases.enemy.x+bases.enemy.width+t.size/2+10,
+    y:gy,
+    hp:t.hp*m,
+    maxHp:t.maxHp*m,
+    atk:t.atk*m,
+    speed:t.speed,
+    range:t.range,
+    maxCd:t.cd,
+    cdTimer:0,
+    size:t.size*(1+(m-1)*.5),
+    state:"WALK",
+    target:null
+  });
+}
+
+function update(dt){
+  if(gameState!=="PLAYING") return;
+
+  timeElapsed+=dt;
+
+  bases.player.x=W-100;
+  bases.player.y=H*.62-80;
+
+  bases.enemy.x=20;
+  bases.enemy.y=H*.62-80;
+
+  spawnEnemy(dt);
+
+  entities.sort((a,b)=>a.y-b.y);
+
+  entities.forEach(e=>{
+    e.state="WALK";
+    e.target=null;
+  });
+
+  for(let i=0;i<entities.length;i++){
+    const e=entities[i];
+
+    if(e.hp<=0) continue;
+
+    if(e.isAlly && e.x-e.range<=bases.enemy.x+bases.enemy.width){
+      e.state="ATTACK";
+      e.target=bases.enemy;
+    }else if(!e.isAlly && e.x+e.range>=bases.player.x){
+      e.state="ATTACK";
+      e.target=bases.player;
+    }
+
+    for(let j=0;j<entities.length;j++){
+      const o=entities[j];
+
+      if(i===j || o.hp<=0 || e.isAlly===o.isAlly) continue;
+      if(Math.abs(e.y-o.y)>42) continue;
+
+      if(Math.abs(e.x-o.x)<=e.range){
+        e.state="ATTACK";
+        e.target=o;
+        break;
+      }
+    }
+  }
+
+  for(let i=entities.length-1;i>=0;i--){
+    const e=entities[i];
+
+    if(e.state==="WALK"){
+      e.x+=e.speed*dt;
+    }else if(e.state==="ATTACK" && e.target){
+      e.cdTimer-=dt;
+
+      if(e.cdTimer<=0){
+        e.target.hp-=e.atk;
+        e.cdTimer=e.maxCd;
+
+        const tx=e.target.x!==undefined ? e.target.x+40 : e.x;
+        const ty=e.target.y!==undefined ? e.target.y : e.y;
+
+        createParticles(tx,ty,e.isAlly ? "#ef4444" : "#3b82f6",5);
+
+        damageTexts.push({
+          x:tx,
+          y:ty-30,
+          text:Math.floor(e.atk),
+          life:.8,
+          maxLife:.8
+        });
+
+        if(e.target===bases.enemy && bases.enemy.hp<=0){
+          endGame(true);
+        }
+
+        if(e.target===bases.player && bases.player.hp<=0){
+          endGame(false);
+        }
+      }
+    }
+
+    if(e.hp<=0){
+      createParticles(e.x,e.y,"#fff",10);
+      entities.splice(i,1);
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+
+    p.x+=p.vx*dt;
+    p.y+=p.vy*dt;
+    p.life-=dt;
+
+    if(p.life<=0){
+      particles.splice(i,1);
+    }
+  }
+
+  for(let i=damageTexts.length-1;i>=0;i--){
+    const d=damageTexts[i];
+
+    d.y-=20*dt;
+    d.life-=dt;
+
+    if(d.life<=0){
+      damageTexts.splice(i,1);
+    }
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle="#bde7ff";
+  ctx.fillRect(0,0,W,H*.62);
+
+  ctx.fillStyle="#9fd38b";
+  ctx.fillRect(0,H*.62,W,H*.38);
+
+  ctx.strokeStyle="rgba(255,255,255,.55)";
+  ctx.lineWidth=3;
+
+  for(let x=-100;x<W+120;x+=90){
+    ctx.beginPath();
+    ctx.moveTo(x,H*.64);
+    ctx.lineTo(x+120,H*.95);
+    ctx.stroke();
+  }
+
+  drawBase(bases.enemy,"🗺️");
+  drawBase(bases.player,"🏫");
+
+  entities.forEach(e=>{
+    ctx.font=e.size+"px Arial";
+    ctx.textAlign="center";
+    ctx.textBaseline="bottom";
+
+    if(e.state==="WALK"){
+      ctx.fillText(e.emoji,e.x,e.y+Math.sin(timeElapsed*10)*5);
+    }else{
+      const dir=e.isAlly ? -1 : 1;
+      ctx.fillText(e.emoji,e.x+dir*Math.sin(e.cdTimer*10)*5,e.y);
+    }
+
+    const bw=e.size;
+
+    ctx.fillStyle="#ef4444";
+    ctx.fillRect(e.x-bw/2,e.y-e.size-10,bw,5);
+
+    ctx.fillStyle="#22c55e";
+    ctx.fillRect(e.x-bw/2,e.y-e.size-10,bw*Math.max(0,e.hp/e.maxHp),5);
+  });
+
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.globalAlpha=1;
+
+  damageTexts.forEach(d=>{
+    ctx.globalAlpha=Math.max(0,d.life/d.maxLife);
+    ctx.fillStyle="#ff0000";
+    ctx.font="bold 20px Arial";
+    ctx.textAlign="center";
+    ctx.strokeStyle="white";
+    ctx.lineWidth=3;
+    ctx.strokeText(d.text,d.x,d.y);
+    ctx.fillText(d.text,d.x,d.y);
+  });
+
+  ctx.globalAlpha=1;
+}
+
+function drawBase(base,emoji){
+  const bw=64;
+
+  ctx.fillStyle="#ef4444";
+  ctx.fillRect(base.x+base.width/2-bw/2,base.y-15,bw,8);
+
+  ctx.fillStyle="#22c55e";
+  ctx.fillRect(
+    base.x+base.width/2-bw/2,
+    base.y-15,
+    bw*Math.max(0,base.hp/base.maxHp),
+    8
+  );
+
+  ctx.font="62px Arial";
+  ctx.textAlign="center";
+  ctx.textBaseline="bottom";
+  ctx.fillText(emoji,base.x+base.width/2,base.y+base.height);
+}
+
+function createParticles(x,y,color,count){
+  for(let i=0;i<count;i++){
+    particles.push({
+      x:x,
+      y:y,
+      vx:(Math.random()-.5)*110,
+      vy:(Math.random()-.5)*110,
+      life:.5+Math.random()*.5,
+      maxLife:1,
+      color:color,
+      size:Math.random()*4+2
+    });
+  }
+}
+
+function loop(ts){
+  let dt=(ts-lastTime)/1000;
+
+  if(dt>.1) dt=.1;
+
+  lastTime=ts;
+
+  update(dt);
+  draw();
+
+  animationId=requestAnimationFrame(loop);
+}
+
+updateUI();
+draw();
+</script>
+</body>
+</html>
